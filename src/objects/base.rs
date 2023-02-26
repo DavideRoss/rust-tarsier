@@ -20,6 +20,8 @@ use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
+use crate::Texture;
+
 pub struct Base {
     pub entry: Entry,
     pub instance: Instance,
@@ -456,6 +458,17 @@ impl Base {
                     _ => (),
                 }
             });
+    }
+
+    pub unsafe fn destroy_texture(&self, texture: Texture) {
+        self.device.destroy_image_view(texture.image_view, None);
+        self.device.destroy_image(texture.image, None);
+
+        if texture.sampler.is_some() {
+            self.device.destroy_sampler(texture.sampler.unwrap(), None);
+        }
+
+        self.device.free_memory(texture.image_memory, None);
     }
 }
 

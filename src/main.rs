@@ -1,5 +1,5 @@
-mod base;
-use crate::base::*;
+mod objects;
+use crate::objects::*;
 
 use ash::vk;
 use ash::util::*;
@@ -24,9 +24,15 @@ pub struct Vector3 {
     pub _pad: f32,
 }
 
+// TODO: replace all struct declaration with builders
+
 fn main() {
     unsafe {
         let base = Base::new(1920, 1080);
+
+        // ================================================================
+        // RENDERPASS
+        // ================================================================
 
         let renderpass_attachments = [
             vk::AttachmentDescription {
@@ -80,6 +86,10 @@ fn main() {
 
         let renderpass = base.device.create_render_pass(&renderpass_create_info, None).unwrap();
 
+        // ================================================================
+        // FRAMEBUFFERS
+        // ================================================================
+
         let framebuffers: Vec<vk::Framebuffer> = base
             .present_image_views
             .iter()
@@ -97,8 +107,11 @@ fn main() {
             })
             .collect();
 
+        // ================================================================
+        // INDEX BUFFER
+        // ================================================================
+
         let index_buffer_data = [0, 1, 2, 2, 3, 0];
-        // TODO: not sure about this, on the example is creating the struct from scratch using default
         let index_buffer_info = vk::BufferCreateInfo::builder()
             .size(std::mem::size_of_val(&index_buffer_data) as u64)
             .usage(vk::BufferUsageFlags::INDEX_BUFFER)
@@ -125,6 +138,10 @@ fn main() {
 
         base.device.unmap_memory(index_buffer_memory);
         base.device.bind_buffer_memory(index_buffer, index_buffer_memory, 0).unwrap();
+
+        // ================================================================
+        // VERTEX BUFFER
+        // ================================================================
 
         let vertices = [
             Vertex {
@@ -184,6 +201,10 @@ fn main() {
             _pad: 0.0
         };
 
+        // ================================================================
+        // UNIFORM BUFFER
+        // ================================================================
+
         let uniform_color_buffer_info = vk::BufferCreateInfo {
             size: std::mem::size_of_val(&uniform_color_buffer_data) as u64,
             usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
@@ -219,7 +240,10 @@ fn main() {
         base.device.unmap_memory(uniform_color_buffer_memory);
         base.device.bind_buffer_memory(uniform_color_buffer, uniform_color_buffer_memory, 0).unwrap();
 
-        // TODO: add image
+        // ================================================================
+        // TEXTURE
+        // ================================================================
+
         let image = image::load_from_memory(include_bytes!("../assets/rust.png"))
             .unwrap()
             .to_rgba8();
@@ -399,6 +423,10 @@ fn main() {
 
         let tex_image_view = base.device.create_image_view(&tex_image_view_info, None).unwrap();
 
+        // ================================================================
+        // DESCRIPTORS
+        // ================================================================
+
         let descriptor_sizes = [
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::UNIFORM_BUFFER,
@@ -477,6 +505,10 @@ fn main() {
         ];
         base.device.update_descriptor_sets(&write_desc_sets, &[]);
 
+        // ================================================================
+        // SHADERS
+        // ================================================================
+
         let mut vertex_spv_file = Cursor::new(&include_bytes!("../shaders-cache/vert.spv")[..]);
         let mut frag_spv_file = Cursor::new(&include_bytes!("../shaders-cache/frag.spv")[..]);
 
@@ -507,6 +539,10 @@ fn main() {
                 ..Default::default()
             },
         ];
+
+        // ================================================================
+        // FIXED FUNCTIONS
+        // ================================================================
 
         let vertex_input_binding_descriptions = [
             vk::VertexInputBindingDescription {
@@ -606,6 +642,10 @@ fn main() {
         let dynamic_state = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_state).build();
 
+        // ================================================================
+        // PIPELINE
+        // ================================================================
+
         let graphics_pipeline_infos = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_stage_create_infos)
             .vertex_input_state(&vertex_input_state_info)
@@ -630,6 +670,10 @@ fn main() {
             .unwrap();
 
         let graphic_pipeline = graphics_pipelines[0];
+
+        // ================================================================
+        // RENDER LOOP
+        // ================================================================
 
         base.render_loop(|| {
             let (present_index, _) = base.swapchain_loader.acquire_next_image(
