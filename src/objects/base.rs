@@ -94,7 +94,7 @@ impl Base {
                 .application_version(0)
                 .engine_name(app_name)
                 .engine_version(0)
-                .api_version(vk::make_api_version(0, 1, 0, 0))
+                .api_version(vk::make_api_version(0, 1, 2, 0))
                 .build();
             
             let create_flags = vk::InstanceCreateFlags::default();
@@ -587,7 +587,7 @@ unsafe extern "system" fn vulkan_debug_callback(
     };
 
     println!(
-        "{message_severity:?}: {message_type:?} [{message_id_name} ({message_id_number})] : {message}",
+        "{message_severity:?}: {message_type:?} [{message_id_name} ({message_id_number})] : {message}\n",
     );
 
     vk::FALSE
