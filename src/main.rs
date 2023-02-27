@@ -483,8 +483,8 @@ fn main() {
 
         let tex_descriptor = vk::DescriptorImageInfo { 
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            image_view: texture.texture.image_view,
-            sampler: texture.texture.sampler.unwrap()
+            image_view: texture.data.image_view,
+            sampler: texture.data.sampler.unwrap()
         };
 
         let write_desc_sets = [
@@ -787,14 +787,7 @@ fn main() {
         base.device.destroy_shader_module(vertex_shader_module, None);
         base.device.destroy_shader_module(frag_shader_module, None);
 
-        // base.device.free_memory(image_buffer_memory, None);
-        // base.device.destroy_buffer(image_buffer, None);
-
-        // base.device.free_memory(texture_memory, None);
-        // base.device.destroy_image_view(tex_image_view, None);
-        // base.device.destroy_image(texture_image, None);
-
-        base.destroy_texture(texture.texture);
+        texture.data.destroy(&base);
 
         base.device.free_memory(index_buffer_memory, None);
         base.device.destroy_buffer(index_buffer, None);

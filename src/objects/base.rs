@@ -459,17 +459,6 @@ impl Base {
                 }
             });
     }
-
-    pub unsafe fn destroy_texture(&self, texture: Texture) {
-        self.device.destroy_image_view(texture.image_view, None);
-        self.device.destroy_image(texture.image, None);
-
-        if texture.sampler.is_some() {
-            self.device.destroy_sampler(texture.sampler.unwrap(), None);
-        }
-
-        self.device.free_memory(texture.image_memory, None);
-    }
 }
 
 impl Drop for Base {
