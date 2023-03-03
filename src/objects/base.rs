@@ -20,8 +20,6 @@ use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
-use crate::Texture;
-
 pub struct Base {
     pub entry: Entry,
     pub instance: Instance,

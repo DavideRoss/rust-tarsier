@@ -20,8 +20,7 @@ pub struct Texture {
     pub descriptor: vk::DescriptorImageInfo,
     pub sampler: Option<vk::Sampler>,
 
-    staging_buffer: vk::Buffer,
-    staging_buffer_memory: vk::DeviceMemory
+    staging_buffer: Buffer
 }
 
 impl Texture {
@@ -41,10 +40,11 @@ impl Texture {
 
         base.device.free_memory(self.image_memory, None);
 
-        base.device.destroy_buffer(self.staging_buffer, None);
-        base.device.free_memory(self.staging_buffer_memory, None);
+        self.staging_buffer.destroy(base);
     }
 }
+
+// TODO: replace memcpy with Align
 
 #[derive(Clone, Debug)]
 pub struct Texture2D {
@@ -63,33 +63,16 @@ impl Texture2D {
         let mip_levels = (width.max(height) as f32).log2().floor() as u32 + 1;
         let image_data = image.into_raw();
 
-        // Create image buffer
-        let staging_buffer_info = vk::BufferCreateInfo::builder()
-            .size((std::mem::size_of::<u8>() * image_data.len()) as u64)
-            .usage(vk::BufferUsageFlags::TRANSFER_SRC)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .build();
-        let staging_buffer = base.device.create_buffer(&staging_buffer_info, None)?;
-
-        // Copy image into buffer
-        let staging_buffer_memory_req = base.device.get_buffer_memory_requirements(staging_buffer);
-        let staging_buffer_memory_index = find_memory_type_index(
-            &staging_buffer_memory_req, 
-            &base.device_memory_properties,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
-        ).unwrap();
-
-        let staging_buffer_allocate_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(staging_buffer_memory_req.size)
-            .memory_type_index(staging_buffer_memory_index)
-            .build();
-
-        let staging_buffer_memory = base.device.allocate_memory(&staging_buffer_allocate_info, None)?;
-        base.device.bind_buffer_memory(staging_buffer, staging_buffer_memory, 0)?;
-
-        let image_ptr = base.device.map_memory(staging_buffer_memory, 0, staging_buffer_memory_req.size, vk::MemoryMapFlags::empty())?;
-        memcpy(image_data.as_ptr(), image_ptr.cast(), image_data.len());
-        base.device.unmap_memory(staging_buffer_memory);
+        let staging_buffer = Buffer::new(
+            base,
+            (std::mem::size_of::<u8>() * image_data.len()) as u64,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::SharingMode::EXCLUSIVE,
+            None,
+            true
+        );
+        memcpy(image_data.as_ptr(), staging_buffer.ptr.unwrap().cast(), image_data.len());
+        staging_buffer.unmap_memory(base);
 
         // TODO: here I should generate mipmaps
 
@@ -165,7 +148,7 @@ impl Texture2D {
 
                 device.cmd_copy_buffer_to_image(
                     texture_command_buffer,
-                    staging_buffer,
+                    staging_buffer.buffer,
                     texture_image,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &[buffer_copy_region]
@@ -246,8 +229,7 @@ impl Texture2D {
                 descriptor,
                 sampler: Some(sampler),
                 
-                staging_buffer,
-                staging_buffer_memory
+                staging_buffer
             }
         })
     }
