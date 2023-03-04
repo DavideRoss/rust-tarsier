@@ -7,27 +7,15 @@ use ash::util::*;
 use std::default::Default;
 use std::ffi::CStr;
 use std::io::Cursor;
-use std::mem::{self, align_of};
+use std::mem::align_of;
 
-#[derive(Clone, Debug, Copy)]
-struct Vertex {
-    pos: [f32; 4],
-    uv: [f32; 2],
-}
-
-#[derive(Clone, Debug, Copy)]
-pub struct Vector3 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub _pad: f32,
-}
+use nalgebra_glm as glm;
 
 // TODO: replace all struct declaration with builders
 
 fn main() {
     unsafe {
-        let base = Base::new(800, 600);
+        let base = Base::new(1920, 1080);
 
         // ================================================================
         // RENDERPASS
@@ -107,22 +95,26 @@ fn main() {
             .collect();
 
         // ================================================================
+        // MODELS
+        // ================================================================
+
+        let mesh_model = Model::from_file("./assets/room/viking_room.obj");
+
+        // ================================================================
         // INDEX BUFFER
         // ================================================================
 
-        let index_buffer_data = [0, 1, 2, 2, 3, 0];
-
         let index_buffer = Buffer::new(
             &base,
-            std::mem::size_of_val(&index_buffer_data) as u64,
+            (std::mem::size_of::<u32>() * mesh_model.indices.len()) as u64,
             vk::BufferUsageFlags::INDEX_BUFFER,
             vk::SharingMode::EXCLUSIVE,
-            None,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
             true
         );
 
         let mut slice = Align::new(index_buffer.ptr.unwrap(), align_of::<i32>() as u64, index_buffer.size);
-        slice.copy_from_slice(&index_buffer_data);
+        slice.copy_from_slice(&mesh_model.indices);
 
         index_buffer.unmap_memory(&base);
 
@@ -130,36 +122,17 @@ fn main() {
         // VERTEX BUFFER
         // ================================================================
 
-        let vertices = [
-            Vertex {
-                pos: [-1.0, -1.0, 0.0, 1.0],
-                uv: [0.0, 0.0],
-            },
-            Vertex {
-                pos: [-1.0, 1.0, 0.0, 1.0],
-                uv: [0.0, 1.0],
-            },
-            Vertex {
-                pos: [1.0, 1.0, 0.0, 1.0],
-                uv: [1.0, 1.0],
-            },
-            Vertex {
-                pos: [1.0, -1.0, 0.0, 1.0],
-                uv: [1.0, 0.0],
-            },
-        ];
-
         let vertex_buffer = Buffer::new(
             &base, 
-            std::mem::size_of_val(&vertices) as u64,
+            (std::mem::size_of::<Vertex>() * mesh_model.vertices.len()) as u64,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             vk::SharingMode::EXCLUSIVE,
-            None,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
             true
         );
 
         let mut slice = Align::new(vertex_buffer.ptr.unwrap(), align_of::<Vertex>() as u64, vertex_buffer.size);
-        slice.copy_from_slice(&vertices);
+        slice.copy_from_slice(&mesh_model.vertices);
 
         vertex_buffer.unmap_memory(&base);
 
@@ -167,9 +140,26 @@ fn main() {
         // UNIFORM BUFFER
         // ================================================================
 
-        let uniform_color_buffer_data = Vector3 {
-            x: 1.0, y: 1.0, z: 1.0,
-            _pad: 0.0
+        let model = glm::rotate(&glm::identity(), glm::radians(&glm::vec1(45.0))[0], &glm::vec3(0.0, 0.0, 1.0));
+
+        let view = glm::look_at(
+            &glm::vec3(2.0, 2.0, 2.0),
+            &glm::vec3(0.0, 0.0, 0.0),
+            &glm::vec3(0.0, 0.0, 1.0)
+        );
+
+        let mut projection = glm::perspective_rh_zo(
+            (base.surface_resolution.width as f32) / (base.surface_resolution.height as f32),
+            glm::radians(&glm::vec1(45.0))[0],
+            0.1,
+            10.0
+        );
+
+        // glm was designed for OpenGL, so the Y axis has to be flipped
+        projection[(1, 1)] *= -1.0;
+
+        let uniform_color_buffer_data = UniformBufferObject {
+            model, view, projection
         };
 
         let uniform_buffer = Buffer::new(
@@ -177,13 +167,13 @@ fn main() {
             std::mem::size_of_val(&uniform_color_buffer_data) as u64,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk::SharingMode::EXCLUSIVE,
-            None,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
             true
         );
 
         let mut uniform_aligned_slice = Align::new(
             uniform_buffer.ptr.unwrap(),
-            align_of::<Vector3>() as u64,
+            align_of::<glm::Vec4>() as u64,
             uniform_buffer.size
         );
         uniform_aligned_slice.copy_from_slice(&[uniform_color_buffer_data]);
@@ -191,10 +181,10 @@ fn main() {
         uniform_buffer.unmap_memory(&base);
 
         // ================================================================
-        // TEXTURE
+        // TEXTURES
         // ================================================================
 
-        let texture = Texture2D::load_from_file(&base, "./assets/rust.png").unwrap();
+        let texture = Texture2D::load_from_file(&base, "./assets/room/viking_room.png").unwrap();
 
         // ================================================================
         // DESCRIPTORS
@@ -216,11 +206,14 @@ fn main() {
             .build();
         let descriptor_pool = base.device.create_descriptor_pool(&descriptor_pool_info, None).unwrap();
 
+        // HINT: here's where you can change the binding of the buffers to the stages
+        // for example: you can specify samplers working only on fragment, or both fragment and vertex
+        // same thing with the UBO
         let desc_layout_bindings = [
             vk::DescriptorSetLayoutBinding {
                 descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
                 descriptor_count: 1,
-                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                stage_flags: vk::ShaderStageFlags::VERTEX,
                 ..Default::default()
             },
 
@@ -317,39 +310,17 @@ fn main() {
         // FIXED FUNCTIONS
         // ================================================================
 
-        let vertex_input_binding_descriptions = [
-            vk::VertexInputBindingDescription {
-                binding: 0,
-                stride: mem::size_of::<Vertex>() as u32,
-                input_rate: vk::VertexInputRate::VERTEX
-            }
-        ];
-
-        let vertex_input_attribute_descriptions = [
-            vk::VertexInputAttributeDescription {
-                location: 0,
-                binding: 0,
-                format: vk::Format::R32G32B32A32_SFLOAT,
-                offset: offset_of!(Vertex, pos) as u32
-            },
-
-            vk::VertexInputAttributeDescription {
-                location: 1,
-                binding: 0,
-                format: vk::Format::R32G32_SFLOAT,
-                offset: offset_of!(Vertex, uv) as u32,
-            }
-        ];
-
         let vertex_input_state_info = vk::PipelineVertexInputStateCreateInfo::builder()
-            .vertex_attribute_descriptions(&vertex_input_attribute_descriptions)
-            .vertex_binding_descriptions(&vertex_input_binding_descriptions)
+            .vertex_attribute_descriptions(&Vertex::attribute_descriptions())
+            .vertex_binding_descriptions(&[Vertex::binding_description()])
             .build();
 
-        let vertex_input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo {
-            topology: vk::PrimitiveTopology::TRIANGLE_LIST,
-            ..Default::default()
-        };
+        let vertex_input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
+            .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .primitive_restart_enable(false) // TODO: what does it do?
+            .build();
+
+        // Viewport state
 
         let viewports = [vk::Viewport {
             x: 0.0,
@@ -365,6 +336,8 @@ fn main() {
             .viewports(&viewports)
             .build();
 
+        // Rasterization state
+
         let rasterization_info = vk::PipelineRasterizationStateCreateInfo {
             front_face: vk::FrontFace::COUNTER_CLOCKWISE,
             line_width: 1.0,
@@ -372,9 +345,13 @@ fn main() {
             ..Default::default()
         };
 
+        // Multisample state
+
         let multisample_state_info = vk::PipelineMultisampleStateCreateInfo::builder()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1)
             .build();
+
+        // Stencil state
 
         let noop_stencil_state = vk::StencilOpState {
             fail_op: vk::StencilOp::KEEP,
@@ -383,6 +360,8 @@ fn main() {
             compare_op: vk::CompareOp::ALWAYS,
             ..Default::default()
         };
+
+        // Depth stencil state
         
         let depth_state_info = vk::PipelineDepthStencilStateCreateInfo {
             depth_test_enable: 1,
@@ -393,6 +372,8 @@ fn main() {
             max_depth_bounds: 1.0,
             ..Default::default()
         };
+
+        // Color blend state
 
         let color_blend_attachment_states = [
             vk::PipelineColorBlendAttachmentState {
@@ -412,12 +393,12 @@ fn main() {
             .attachments(&color_blend_attachment_states)
             .build();
 
-        let dynamic_state = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_state).build();
-
         // ================================================================
         // PIPELINE
         // ================================================================
+
+        let dynamic_state = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_state).build();
 
         let graphics_pipeline_infos = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_stage_create_infos)
@@ -458,7 +439,7 @@ fn main() {
 
             let clear_values = [
                 vk::ClearValue {
-                    color: vk::ClearColorValue { float32: [0.0, 0.0, 0.0, 0.0 ] }
+                    color: vk::ClearColorValue { float32: [0.14, 0.15, 0.2, 0.0 ] }
                 },
                 vk::ClearValue {
                     depth_stencil: vk::ClearDepthStencilValue {
@@ -484,11 +465,14 @@ fn main() {
                 &[base.present_complete_semaphore],
                 &[base.rendering_complete_semaphore],
                 |device, draw_command_buffer| {
-                    device.cmd_begin_render_pass(
-                        draw_command_buffer,
-                        &render_pass_begin_info,
-                        vk::SubpassContents::INLINE
-                    );
+                    device.cmd_begin_render_pass(draw_command_buffer, &render_pass_begin_info, vk::SubpassContents::INLINE);
+                    device.cmd_bind_pipeline(draw_command_buffer, vk::PipelineBindPoint::GRAPHICS, graphic_pipeline);
+
+                    device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
+                    device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
+
+                    device.cmd_bind_vertex_buffers(draw_command_buffer, 0, &[vertex_buffer.buffer], &[0]);
+                    device.cmd_bind_index_buffer(draw_command_buffer, index_buffer.buffer, 0, vk::IndexType::UINT32);
 
                     device.cmd_bind_descriptor_sets(
                         draw_command_buffer,
@@ -499,33 +483,10 @@ fn main() {
                         &[]
                     );
 
-                    device.cmd_bind_pipeline(
-                        draw_command_buffer,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        graphic_pipeline
-                    );
-
-                    device.cmd_set_viewport(draw_command_buffer, 0, &viewports);
-                    device.cmd_set_scissor(draw_command_buffer, 0, &scissors);
-
-                    device.cmd_bind_vertex_buffers(
-                        draw_command_buffer,
-                        0,
-                        &[vertex_buffer.buffer],
-                        &[0]
-                    );
-
-                    device.cmd_bind_index_buffer(
-                        draw_command_buffer,
-                        index_buffer.buffer,
-                        0,
-                        vk::IndexType::UINT32
-                    );
-
                     device.cmd_draw_indexed(
                         draw_command_buffer,
-                        index_buffer_data.len() as u32,
-                        1, 0, 0, 1
+                        mesh_model.indices.len() as u32,
+                        1, 0, 0, 0
                     );
 
                     device.cmd_end_render_pass(draw_command_buffer);

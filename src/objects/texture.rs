@@ -68,7 +68,7 @@ impl Texture2D {
             (std::mem::size_of::<u8>() * image_data.len()) as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::SharingMode::EXCLUSIVE,
-            None,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
             true
         );
         memcpy(image_data.as_ptr(), staging_buffer.ptr.unwrap().cast(), image_data.len());

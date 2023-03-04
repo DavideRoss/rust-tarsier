@@ -17,7 +17,7 @@ impl Buffer {
         size: u64,
         usage: vk::BufferUsageFlags,
         sharing_mode: vk::SharingMode,
-        memory_type_flags: Option<vk::MemoryPropertyFlags>,
+        memory_type_flags: vk::MemoryPropertyFlags,
         automap: bool
     ) -> Self {
         let buffer_info = vk::BufferCreateInfo::builder()
@@ -32,7 +32,7 @@ impl Buffer {
         let buffer_mem_index = find_memory_type_index(
             &buffer_mem_req,
             &base.device_memory_properties,
-            memory_type_flags.unwrap_or(vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT)
+            memory_type_flags
         ).unwrap();
 
         let buffer_allocate_info = vk::MemoryAllocateInfo::builder()
