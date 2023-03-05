@@ -8,44 +8,36 @@ use crate::*;
 #[derive(Clone, Debug)]
 pub struct Texture {
     pub image: vk::Image,
-    pub image_view: vk::ImageView,
-    pub image_layout: vk::ImageLayout,
-    pub image_memory: vk::DeviceMemory,
+    pub view: vk::ImageView,
+    pub layout: vk::ImageLayout,
+    pub memory: vk::DeviceMemory,
+    pub sampler: Option<vk::Sampler>,
 
+    // TODO: maybe move most options on Texture2D struct?
     pub width: u32,
     pub height: u32,
     pub mip_levels: u32,
     pub layer_count: u32,
 
-    pub descriptor: vk::DescriptorImageInfo,
-    pub sampler: Option<vk::Sampler>,
-
     staging_buffer: Buffer
 }
 
 impl Texture {
-    fn update_descriptor(&mut self) {
-        self.descriptor.sampler = self.sampler.unwrap_or(vk::Sampler::null());
-        self.descriptor.image_view = self.image_view;
-        self.descriptor.image_layout = self.image_layout;
-    }
-
     pub unsafe fn destroy(&self, base: &Base) {
-        base.device.destroy_image_view(self.image_view, None);
+        base.device.destroy_image_view(self.view, None);
         base.device.destroy_image(self.image, None);
 
         if self.sampler.is_some() {
             base.device.destroy_sampler(self.sampler.unwrap(), None);
         }
 
-        base.device.free_memory(self.image_memory, None);
+        base.device.free_memory(self.memory, None);
 
         self.staging_buffer.destroy(base);
     }
 }
 
 // TODO: replace memcpy with Align
-
 #[derive(Clone, Debug)]
 pub struct Texture2D {
     pub data: Texture // TODO: find a better name
@@ -218,15 +210,14 @@ impl Texture2D {
         Ok(Texture2D {
             data: Texture {
                 image: texture_image,
-                image_view: tex_image_view,
-                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                image_memory: texture_memory,
+                view: tex_image_view,
+                layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                memory: texture_memory,
 
                 width, height,
                 mip_levels,
                 layer_count: 1,
 
-                descriptor,
                 sampler: Some(sampler),
                 
                 staging_buffer

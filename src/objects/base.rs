@@ -434,11 +434,24 @@ impl Base {
     }
 
     pub fn render_loop<F: Fn()>(&self, f: F) {
+        // let present_info = vk::PresentInfoKHR::builder()
+        //     .wait_semaphores(&[self.rendering_complete_semaphore])
+        //     .swapchains(&[self.swapchain])
+        //     .image_indices(&[0]) // TODO: this value should be the swapimage index
+        //     .build();
+
+        // let result = unsafe {
+        //     self.swapchain_loader.queue_present(self.present_queue, &present_info).unwrap();
+        // }
+        // println!("queue present result: {}", result);
+
+        // TODO: handle minimize to icon case too
         self.event_loop
             .borrow_mut()
             .run_return(|event, _, control_flow| {
                 *control_flow = ControlFlow::Poll;
                 match event {
+                    // On esc -> close the window
                     Event::WindowEvent {
                         event:
                             WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
@@ -452,10 +465,35 @@ impl Base {
                             },
                         ..
                     } => *control_flow = ControlFlow::Exit,
+
+                    // On resize -> rebuild swapchain
+                    Event::WindowEvent {
+                        event:
+                            WindowEvent::Resized(_),
+                        ..
+                    } => println!("Window resized!"),
+
+                    // On clear -> call render loop
                     Event::MainEventsCleared => f(),
+
                     _ => (),
                 }
             });
+    }
+
+    pub unsafe fn recreate_swapchain(&mut self) {
+        self.device.device_wait_idle().unwrap();
+
+        // Cleanup
+        self.device.free_memory(self.depth_image_memory, None);
+        self.device.destroy_image_view(self.depth_image_view, None);
+        self.device.destroy_image(self.depth_image, None);
+        // TODO: not complete! Will trigger errors here
+
+        let dimensions = [
+            self.window.inner_size().width,
+            self.window.inner_size().height
+        ];
     }
 }
 

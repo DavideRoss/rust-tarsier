@@ -247,7 +247,7 @@ fn main() {
 
         let tex_descriptor = vk::DescriptorImageInfo { 
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            image_view: texture.data.image_view,
+            image_view: texture.data.view,
             sampler: texture.data.sampler.unwrap()
         };
 
